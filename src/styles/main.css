@@ -306,12 +306,20 @@ button {
   opacity: 0.55;
   border-style: dashed;
 }
+/* THE EDICT NAME IS NEVER TRUNCATED. It is the thing the player is planning toward, and "Woodse…"
+ * next to "Quarant…" on a phone is two rules you cannot tell apart at a glance. Four chips across
+ * 375px leaves about 78px each, so the name wraps to two lines and shrinks rather than clipping. */
 .echip .ename {
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 700;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  line-height: 1.15;
+  overflow-wrap: anywhere;
+  hyphens: auto;
+}
+@media (min-width: 420px) {
+  .echip .ename {
+    font-size: 13px;
+  }
 }
 .echip .eval {
   font-size: 15px;
