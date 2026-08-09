@@ -302,19 +302,32 @@ button {
   gap: 2px;
   text-align: left;
 }
+/* A FACE-DOWN EDICT NEEDS ONLY TO BE VISIBLY PRESENT; a face-up one is the thing you are planning
+ * toward. Four equal chips across 375px gave each about 78px, which is not enough for "Crossroads"
+ * and forced an ugly mid-word wrap on the game's most important label. Shrinking the unknown ones
+ * to a marker hands that width to the two rules that can actually be read. */
 .echip.hidden {
   opacity: 0.55;
   border-style: dashed;
+  flex: 0 0 46px;
+  align-items: center;
+  text-align: center;
+  padding: 6px 4px;
+}
+.echip.hidden .etext {
+  display: none;
+}
+.echip.hidden .ename {
+  font-size: 18px;
 }
 /* THE EDICT NAME IS NEVER TRUNCATED. It is the thing the player is planning toward, and "Woodse…"
  * next to "Quarant…" on a phone is two rules you cannot tell apart at a glance. Four chips across
  * 375px leaves about 78px each, so the name wraps to two lines and shrinks rather than clipping. */
 .echip .ename {
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 700;
   line-height: 1.15;
   overflow-wrap: anywhere;
-  hyphens: auto;
 }
 @media (min-width: 420px) {
   .echip .ename {
