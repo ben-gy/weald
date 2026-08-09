@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Weald">
+  <rect width="64" height="64" rx="14" fill="#12160F"/>
+  <g>
+    <rect x="9"  y="9"  width="11" height="11" rx="3" fill="#2A3324"/>
+    <rect x="22" y="9"  width="11" height="11" rx="3" fill="#4F9E4A"/>
+    <rect x="35" y="9"  width="11" height="11" rx="3" fill="#4F9E4A"/>
+    <rect x="48" y="9"  width="7"  height="11" rx="3" fill="#2A3324"/>
+    <rect x="9"  y="22" width="11" height="11" rx="3" fill="#4F9E4A"/>
+    <rect x="22" y="22" width="11" height="11" rx="3" fill="#4F9E4A"/>
+    <rect x="35" y="22" width="11" height="11" rx="3" fill="#2A3324"/>
+    <rect x="48" y="22" width="7"  height="11" rx="3" fill="#E0B13C"/>
+    <rect x="9"  y="35" width="11" height="11" rx="3" fill="#2A3324"/>
+    <rect x="22" y="35" width="11" height="11" rx="3" fill="#2A3324"/>
+    <rect x="35" y="35" width="11" height="11" rx="3" fill="#2A3324"/>
+    <rect x="48" y="35" width="7"  height="11" rx="3" fill="#E0B13C"/>
+    <rect x="9"  y="48" width="11" height="7"  rx="3" fill="#4AA8DE"/>
+    <rect x="22" y="48" width="11" height="7"  rx="3" fill="#2A3324"/>
+    <rect x="35" y="48" width="11" height="7"  rx="3" fill="#2A3324"/>
+    <rect x="48" y="48" width="7"  height="7"  rx="3" fill="#2A3324"/>
+  </g>
+</svg>

@@ -1,0 +1,1159 @@
+/* SPDX-License-Identifier: AGPL-3.0-or-later
+ * Copyright (C) 2026 Ben Richardson — https://benrichardson.dev
+ * See ADDITIONAL-TERMS.md for the section 7(b) attribution requirement.
+ *
+ * Weald — one column everywhere, and a square map that is always the widest thing on the screen.
+ *
+ * THE MAP IS SIZED FROM THE VIEWPORT, NEVER FROM A CELL CONSTANT. A grid whose cell is a fixed
+ * number of pixels overflows the moment a mode makes the grid bigger — that is exactly how a
+ * sibling game shipped a 9x9 board with its rightmost columns pushed off a phone. Here `--cell` is
+ * derived by the browser from the container width divided by `--n`, so an 11x11 and a 7x7 both fit
+ * the same box and the only thing that changes is how small a cell gets.
+ *
+ * MEDIA QUERY ORDER IS LOAD-BEARING. The short-viewport block ships LAST, after the tablet and
+ * desktop width queries, because an 812x375 landscape phone is 812px WIDE: it matches the tablet
+ * rule, and whichever of the two is written later wins the cascade.
+ */
+
+/* Safari's UA [hidden] rule is not !important, so a class that sets `display` on the same element
+ * beats it and leaves an invisible blur layer sitting on top of the game eating every tap. This one
+ * line is the fix, and tests/layout.test.ts asserts it is present. */
+[hidden] {
+  display: none !important;
+}
+
+:root {
+  --ground: #12160f;
+  --card: #1d2419;
+  --panel: #1a2016;
+  --sunk: #0e1209;
+  --ink: #0b0e08;
+  --text: #edf1e6;
+  --dim: #a9b69b;
+  --edge: #6f7d61;
+
+  --t-grove: #9ae7ad;
+  --t-mere: #73bef4;
+  --t-tilth: #edc15c;
+  --t-steading: #fb855e;
+  --t-canker: #ac61d1;
+  --t-crag: #8c96a1;
+
+  --gold: #f2c14e;
+  --bad: #ff5544;
+  --you: #a7e0a0;
+  --them: #e0a0b8;
+
+  --pad: 8px;
+  --gap: 8px;
+  --max-col: 420px;
+  --rowgap: 8px;
+
+  /* Set by the stage: how many cells across the current mode's map is. */
+  --n: 9;
+
+  /* THE ROW BUDGET, AS A NUMBER THE BOARD CAN SUBTRACT FROM THE VIEWPORT.
+   * The board must be sized from the height that is actually LEFT, not from the width alone. A
+   * 375px-wide map is 359px square, and 359 + this chrome is 679px — but Safari's visible viewport
+   * on an iPhone SE in portrait is about 553px once the toolbars are counted. Sizing on width alone
+   * pushes the tray and the Place button off the bottom of the screen on the single most common
+   * small phone, and the player cannot commit anything. So --cell takes the MINIMUM of what the
+   * width allows and what the height leaves over, and 100dvh (not 100vh) is what "the height" means. */
+  --r-top: 44px;
+  --r-edicts: 60px;
+  --r-note: 20px;
+  --r-tray: 88px;
+  --r-actions: 64px;
+  --chrome: calc(
+    var(--r-top) + var(--r-edicts) + var(--r-note) + var(--r-tray) + var(--r-actions) +
+      var(--rowgap) * 5 + var(--pad) * 2 + env(safe-area-inset-top) + env(safe-area-inset-bottom)
+  );
+
+  color-scheme: dark;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  background: var(--ground);
+  color: var(--text);
+  font-family: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+#app {
+  min-height: 100vh;
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+}
+
+.main-content {
+  flex: 1 0 auto;
+  width: 100%;
+  max-width: var(--max-col);
+  margin: 0 auto;
+  padding: var(--pad);
+}
+
+.site-footer {
+  flex-shrink: 0;
+  padding: 14px var(--pad) calc(14px + env(safe-area-inset-bottom));
+  text-align: center;
+  font-size: 12px;
+  color: var(--dim);
+}
+.site-footer a {
+  color: var(--dim);
+}
+/* Nobody explores the site mid-survey, and on a phone the backlink steals a strip of the play area.
+ * mobile.css already does this; repeated here so the rule survives independently of load order. */
+body.playing .site-footer {
+  display: none !important;
+}
+
+h1,
+h2,
+h3 {
+  margin: 0 0 8px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+button {
+  font: inherit;
+  color: inherit;
+  border: 0;
+  background: none;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+/* ── menu ───────────────────────────────────────────────────────────────────────────────────── */
+
+.brand {
+  text-align: center;
+  padding: 20px 0 6px;
+}
+.brand h1 {
+  font-size: 40px;
+  letter-spacing: 0.14em;
+  margin: 0;
+}
+.brand p {
+  color: var(--dim);
+  margin: 8px 0 0;
+  font-size: 14px;
+  line-height: 1.45;
+}
+
+.menu {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.btn {
+  min-height: 52px;
+  border-radius: 12px;
+  background: var(--card);
+  border: 1px solid var(--edge);
+  color: var(--text);
+  font-size: 16px;
+  font-weight: 600;
+  padding: 0 16px;
+}
+.btn.primary {
+  background: var(--you);
+  color: var(--ink);
+  border-color: var(--you);
+}
+.btn.ghost {
+  background: transparent;
+}
+.btn[disabled] {
+  opacity: 0.45;
+}
+
+.field {
+  margin-top: 12px;
+}
+.field > .label {
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.09em;
+  color: var(--dim);
+  margin-bottom: 6px;
+}
+.segmented {
+  display: flex;
+  gap: 6px;
+}
+.seg {
+  flex: 1 1 0;
+  min-width: 0;
+  min-height: 46px;
+  border-radius: 10px;
+  border: 1px solid var(--edge);
+  background: var(--card);
+  font-size: 14px;
+  font-weight: 600;
+}
+.seg.on {
+  background: var(--you);
+  color: var(--ink);
+  border-color: var(--you);
+}
+.segmented.small .seg {
+  min-height: 42px;
+  font-size: 13px;
+}
+.fine {
+  color: var(--dim);
+  font-size: 13px;
+  line-height: 1.5;
+  margin: 8px 0 0;
+}
+
+/* ── the play surface ───────────────────────────────────────────────────────────────────────── */
+
+.stage {
+  flex: 1 0 auto;
+  width: 100%;
+  max-width: var(--max-col);
+  margin: 0 auto;
+  padding: var(--pad);
+  padding-top: calc(var(--pad) + env(safe-area-inset-top));
+  padding-bottom: calc(var(--pad) + env(safe-area-inset-bottom));
+  display: flex;
+  flex-direction: column;
+  gap: var(--rowgap);
+  touch-action: manipulation;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.topbar {
+  min-height: var(--r-top);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.tb-left,
+.tb-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.watchpill {
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--gold);
+  white-space: nowrap;
+}
+.deals,
+.parnum {
+  font-size: 12px;
+  color: var(--dim);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.scorenum {
+  font-size: 20px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+.iconbtn {
+  width: 44px;
+  height: 44px;
+  flex: 0 0 auto;
+  border-radius: 10px;
+  border: 1px solid var(--edge);
+  color: var(--dim);
+  font-size: 16px;
+}
+
+.edictstrip {
+  min-height: var(--r-edicts);
+  display: flex;
+  gap: 6px;
+}
+.echip {
+  flex: 1 1 0;
+  min-width: 0;
+  min-height: 44px;
+  border-radius: 10px;
+  border: 1px solid var(--edge);
+  background: var(--card);
+  padding: 6px 8px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 2px;
+  text-align: left;
+}
+.echip.hidden {
+  opacity: 0.55;
+  border-style: dashed;
+}
+.echip .ename {
+  font-size: 13px;
+  font-weight: 700;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.echip .eval {
+  font-size: 15px;
+  font-weight: 800;
+  color: var(--gold);
+  font-variant-numeric: tabular-nums;
+}
+.echip .etext {
+  font-size: 11px;
+  color: var(--dim);
+}
+
+.boardwrap {
+  display: flex;
+  justify-content: center;
+  min-height: 0;
+}
+
+/* THE CELL SIZE IS THE SMALLER OF WHAT THE WIDTH ALLOWS AND WHAT THE HEIGHT LEAVES.
+ * Never a percentage in a custom property used for both width and height — a % there resolves
+ * against an auto-sized grid row and collapses the map to a 10px strip on desktop. Always px. */
+.board {
+  --cell: max(
+    18px,
+    min(
+      calc((min(100vw, var(--max-col)) - var(--pad) * 2) / var(--n)),
+      calc((100dvh - var(--chrome)) / var(--n)),
+      52px
+    )
+  );
+  width: calc(var(--cell) * var(--n));
+  height: calc(var(--cell) * var(--n));
+  display: grid;
+  grid-template-columns: repeat(var(--n), minmax(0, 1fr));
+  grid-template-rows: repeat(var(--n), minmax(0, 1fr));
+  gap: 1px;
+  background: var(--edge);
+  border: 1px solid var(--edge);
+  border-radius: 6px;
+  position: relative;
+  touch-action: none;
+  overflow: hidden;
+}
+
+.cell {
+  min-width: 0;
+  min-height: 0;
+  background: var(--sunk);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: calc(var(--cell) * 0.5);
+  line-height: 1;
+  color: var(--ink);
+}
+.cell.t-grove {
+  background: var(--t-grove);
+}
+.cell.t-mere {
+  background: var(--t-mere);
+}
+.cell.t-tilth {
+  background: var(--t-tilth);
+}
+.cell.t-steading {
+  background: var(--t-steading);
+}
+.cell.t-canker {
+  background: var(--t-canker);
+}
+.cell.t-crag {
+  background: var(--t-crag);
+}
+.cell.fresh {
+  animation: settle 320ms ease-out;
+}
+@keyframes settle {
+  from {
+    transform: scale(0.55);
+    opacity: 0.2;
+  }
+  to {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+/* The ghost is an overlay grid pinned over the board, so moving it costs one transform and never a
+ * relayout of 81 cells. */
+.pghost {
+  position: absolute;
+  left: calc(var(--gx) * (var(--cell)));
+  top: calc(var(--gy) * (var(--cell)));
+  width: calc(var(--gw) * var(--cell));
+  height: calc(var(--gh) * var(--cell));
+  display: grid;
+  grid-template-columns: repeat(var(--gw), 1fr);
+  grid-template-rows: repeat(var(--gh), 1fr);
+  pointer-events: none;
+  z-index: 2;
+}
+.pghost .gcell {
+  grid-column: calc(var(--cx) + 1);
+  grid-row: calc(var(--cy) + 1);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: calc(var(--cell) * 0.5);
+  line-height: 1;
+  color: var(--ink);
+  border-radius: 3px;
+  box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.85);
+}
+.pghost.t-grove .gcell {
+  background: var(--t-grove);
+}
+.pghost.t-mere .gcell {
+  background: var(--t-mere);
+}
+.pghost.t-tilth .gcell {
+  background: var(--t-tilth);
+}
+.pghost.t-steading .gcell {
+  background: var(--t-steading);
+}
+.pghost.t-canker .gcell {
+  background: var(--t-canker);
+}
+/* Illegality is carried by a HATCH and a dashed rim as well as by colour, so it survives any
+ * colour-vision deficiency and a greyscale screenshot.
+ *
+ * NAMED .pghost, NOT .ghost. `.ghost` is already the fleet's button modifier (`.btn.ghost`), and a
+ * bare `.ghost { position: absolute }` here silently matched the results screen's Menu button and
+ * stacked it underneath Play again — two controls at identical coordinates, one of them
+ * unreachable. A generic class name in a shared stylesheet is a collision waiting to happen. */
+.pghost.bad .gcell {
+  background: repeating-linear-gradient(
+    45deg,
+    var(--bad) 0 4px,
+    rgba(0, 0, 0, 0.45) 4px 8px
+  );
+  box-shadow: 0 0 0 2px var(--bad);
+  color: transparent;
+}
+.stage.dragging .board {
+  filter: brightness(0.92);
+}
+
+.note {
+  min-height: var(--r-note);
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.35;
+  color: var(--dim);
+  text-align: center;
+}
+.note.warn {
+  color: var(--t-canker);
+  font-weight: 600;
+}
+
+.tray {
+  min-height: var(--r-tray);
+  display: flex;
+  gap: 6px;
+}
+.branch {
+  flex: 1 1 0;
+  min-width: 0;
+  min-height: 56px;
+  border-radius: 12px;
+  border: 1px solid var(--edge);
+  background: var(--card);
+  padding: 6px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+}
+.branch.on {
+  border-color: var(--gold);
+  background: var(--panel);
+  box-shadow: inset 0 0 0 1px var(--gold);
+}
+.branch[disabled] {
+  opacity: 0.4;
+}
+.bmini {
+  display: grid;
+  grid-template-columns: repeat(var(--bw), 9px);
+  grid-template-rows: repeat(var(--bh), 9px);
+  gap: 1px;
+}
+.bmini i {
+  grid-column: calc(var(--cx) + 1);
+  grid-row: calc(var(--cy) + 1);
+  background: var(--dim);
+  border-radius: 1px;
+}
+.branch.on .bmini i {
+  background: var(--gold);
+}
+.blabel {
+  font-size: 11px;
+  color: var(--dim);
+  text-align: center;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 100%;
+}
+
+.actionbar {
+  min-height: var(--r-actions);
+  display: flex;
+  gap: 6px;
+  align-items: stretch;
+}
+.ctl {
+  width: 56px;
+  min-height: 56px;
+  flex: 0 0 auto;
+  border-radius: 12px;
+  border: 1px solid var(--edge);
+  background: var(--card);
+  font-size: 22px;
+}
+.terrainseg {
+  display: flex;
+  gap: 6px;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.tseg {
+  flex: 1 1 0;
+  min-width: 0;
+  min-height: 56px;
+  border-radius: 12px;
+  border: 1px solid var(--edge);
+  background: var(--card);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1px;
+  color: var(--text);
+}
+.tseg .tg {
+  font-size: 16px;
+  line-height: 1;
+}
+.tseg .tn {
+  font-size: 10px;
+  color: var(--dim);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 100%;
+}
+.tseg.on {
+  box-shadow: inset 0 0 0 2px var(--gold);
+}
+.tseg.on .tn {
+  color: var(--text);
+}
+.tseg.t-grove .tg {
+  color: var(--t-grove);
+}
+.tseg.t-mere .tg {
+  color: var(--t-mere);
+}
+.tseg.t-tilth .tg {
+  color: var(--t-tilth);
+}
+.tseg.t-steading .tg {
+  color: var(--t-steading);
+}
+.commit {
+  flex: 1 1 120px;
+  min-width: 110px;
+  min-height: 56px;
+  border-radius: 12px;
+  background: var(--you);
+  color: var(--ink);
+  font-size: 16px;
+  font-weight: 800;
+}
+.commit.undo {
+  background: transparent;
+  border: 1px solid var(--edge);
+  color: var(--text);
+}
+.commit[disabled] {
+  opacity: 0.4;
+}
+
+/* ── countdown ──────────────────────────────────────────────────────────────────────────────── */
+
+.countwrap {
+  flex: 1 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.countdown {
+  font-size: 56px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  color: var(--gold);
+}
+.countdown.pop {
+  animation: pop 380ms ease-out;
+}
+@keyframes pop {
+  from {
+    transform: scale(0.6);
+    opacity: 0;
+  }
+  to {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+/* ── overlays ───────────────────────────────────────────────────────────────────────────────── */
+
+.backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  background: rgba(4, 7, 3, 0.74);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+}
+.sheet {
+  background: var(--panel);
+  border: 1px solid var(--edge);
+  border-radius: 16px;
+  padding: 18px;
+  max-width: 420px;
+  width: 100%;
+  max-height: 84vh;
+  overflow-y: auto;
+  position: relative;
+}
+.sheet h2 {
+  padding-right: 48px;
+}
+.sheet p,
+.sheet li {
+  color: var(--dim);
+  font-size: 14px;
+  line-height: 1.55;
+}
+.sheet ol,
+.sheet ul {
+  padding-left: 20px;
+  margin: 0;
+}
+.sheet li {
+  margin-bottom: 8px;
+}
+.sheet strong {
+  color: var(--text);
+}
+.closex {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  width: 44px;
+  height: 44px;
+  border-radius: 10px;
+  font-size: 20px;
+  color: var(--dim);
+}
+
+/* ── results ────────────────────────────────────────────────────────────────────────────────── */
+
+.results h2 {
+  font-size: 26px;
+}
+.res-sub {
+  color: var(--dim);
+  font-size: 14px;
+  margin: 0 0 14px;
+}
+.plines {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.pline {
+  background: var(--card);
+  border: 1px solid var(--edge);
+  border-radius: 12px;
+  padding: 10px 12px;
+}
+.pline.win {
+  border-color: var(--gold);
+}
+.pline .top {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+.pline .nm {
+  font-weight: 700;
+}
+.pline .tot {
+  margin-left: auto;
+  font-size: 22px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+.pline .parts {
+  font-size: 12px;
+  color: var(--dim);
+  margin-top: 3px;
+  font-variant-numeric: tabular-nums;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 8px;
+}
+.pline .parts.sg {
+  display: block;
+}
+.ep {
+  white-space: nowrap;
+}
+.ep b {
+  color: var(--text);
+}
+/* Whoever read a given edict best at this table. A row that only shows your own numbers wastes the
+ * one screen where people compare. */
+.ep.best b {
+  color: var(--gold);
+}
+.ep.best::after {
+  content: ' ★';
+  color: var(--gold);
+}
+.fine2 {
+  opacity: 0.7;
+}
+.botTag {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--dim);
+  border: 1px solid var(--edge);
+  border-radius: 999px;
+  padding: 1px 6px;
+  font-weight: 600;
+}
+
+/* The per-player map. Everyone's, every time — that is the whole point of dealing one identical
+ * run to every seat. */
+.prow {
+  display: flex;
+  gap: 10px;
+  margin-top: 6px;
+  align-items: flex-start;
+}
+.pdetail {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.thumb {
+  flex: 0 0 auto;
+  width: 84px;
+  height: 84px;
+  display: grid;
+  grid-template-columns: repeat(var(--n), 1fr);
+  grid-template-rows: repeat(var(--n), 1fr);
+  gap: 1px;
+  background: var(--edge);
+  border: 1px solid var(--edge);
+  border-radius: 4px;
+  overflow: hidden;
+}
+.thumb i {
+  background: var(--sunk);
+}
+.thumb i.t-grove {
+  background: var(--t-grove);
+}
+.thumb i.t-mere {
+  background: var(--t-mere);
+}
+.thumb i.t-tilth {
+  background: var(--t-tilth);
+}
+.thumb i.t-steading {
+  background: var(--t-steading);
+}
+.thumb i.t-canker {
+  background: var(--t-canker);
+}
+.thumb i.t-crag {
+  background: var(--t-crag);
+}
+.missed {
+  margin-top: 12px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px dashed var(--edge);
+  font-size: 13px;
+  color: var(--dim);
+  line-height: 1.5;
+}
+.res-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 16px;
+}
+.res-wait {
+  color: var(--dim);
+  font-size: 13px;
+  text-align: center;
+}
+.results-feedback {
+  color: var(--dim);
+  font-size: 13px;
+  text-decoration: underline;
+  padding: 10px;
+}
+
+/* ── lobby / room entry (engine views, styled here) ─────────────────────────────────────────── */
+
+.room-entry,
+.lobby {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.re-title,
+.lobby-title {
+  font-size: 22px;
+}
+.re-sub,
+.lobby-sub,
+.re-note,
+.lobby-hint {
+  color: var(--dim);
+  font-size: 13px;
+  line-height: 1.5;
+  margin: 0;
+}
+.lobby-btn {
+  min-height: 52px;
+  border-radius: 12px;
+  background: var(--card);
+  border: 1px solid var(--edge);
+  color: var(--text);
+  font-weight: 600;
+  font-size: 15px;
+  padding: 0 14px;
+  width: 100%;
+}
+.lobby-btn.primary {
+  background: var(--you);
+  color: var(--ink);
+  border-color: var(--you);
+}
+.lobby-btn.pghost {
+  background: transparent;
+}
+.lobby-btn[disabled] {
+  opacity: 0.45;
+}
+.re-join {
+  display: flex;
+  gap: 8px;
+}
+.re-input,
+.lobby-link {
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 52px;
+  border-radius: 12px;
+  background: var(--sunk);
+  border: 1px solid var(--edge);
+  color: var(--text);
+  padding: 0 12px;
+  font-size: 16px;
+  letter-spacing: 0.08em;
+}
+.re-go {
+  width: auto;
+  flex: 0 0 auto;
+  padding: 0 18px;
+}
+.lobby-code {
+  font-size: 34px;
+  font-weight: 800;
+  letter-spacing: 0.22em;
+  text-align: center;
+  color: var(--gold);
+  font-variant-numeric: tabular-nums;
+}
+.lobby-invite {
+  display: flex;
+  gap: 8px;
+  min-width: 0;
+}
+.lobby-invite .lobby-btn {
+  width: auto;
+  flex: 0 0 auto;
+  padding: 0 16px;
+}
+.lobby-players {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.lobby-players li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--card);
+  border: 1px solid var(--edge);
+  border-radius: 10px;
+  padding: 10px 12px;
+  font-size: 14px;
+}
+.lobby-players .tag {
+  margin-left: auto;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--dim);
+}
+.lobby-players .tag.ready {
+  color: var(--you);
+}
+.lobby-searching {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--dim);
+  font-size: 13px;
+}
+/* A still "waiting…" reads as a hung page; a WebRTC handshake genuinely takes a few seconds. */
+.spinner {
+  width: 18px;
+  height: 18px;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  border: 2px solid var(--edge);
+  border-top-color: var(--gold);
+  animation: spin 900ms linear infinite;
+}
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+/* THE QR PANEL IS DELIBERATELY NOT STYLED HERE. The engine ships it fully styled inline — a white
+ * card (most phone cameras will not read an inverted code), its 4-module quiet zone, and an SVG
+ * that sizes itself from a full-width wrapper. A game rule that sets its background, padding or
+ * svg width either does nothing (inline style wins) or, worse, half-applies and leaves the code
+ * under-filling or clipped. A sibling game clipped its QR off the screen doing exactly this. */
+
+.lobby-head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+.lobby-badge {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--dim);
+  border: 1px solid var(--edge);
+  border-radius: 999px;
+  padding: 3px 9px;
+}
+.lobby-badge.ok {
+  color: var(--ink);
+  background: var(--you);
+  border-color: var(--you);
+}
+.lobby-flash {
+  background: var(--card);
+  border: 1px solid var(--gold);
+  border-radius: 10px;
+  padding: 10px 12px;
+  font-size: 13px;
+}
+.lobby-wait,
+.re-empty,
+.re-divider {
+  color: var(--dim);
+  font-size: 13px;
+  text-align: center;
+  margin: 0;
+}
+.lobby-name,
+.re-room-code {
+  font-weight: 600;
+}
+.re-error {
+  color: var(--t-blight);
+  font-size: 13px;
+  margin: 0;
+}
+.spinner.sm {
+  width: 14px;
+  height: 14px;
+}
+.lobby-modeslot,
+.modeslot {
+  background: var(--card);
+  border: 1px solid var(--edge);
+  border-radius: 12px;
+  padding: 10px;
+}
+.modeslot-label {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.09em;
+  color: var(--dim);
+  display: block;
+  margin-bottom: 6px;
+}
+.netdebug {
+  font-size: 11px;
+  color: var(--dim);
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+/* ── tablet ─────────────────────────────────────────────────────────────────────────────────── */
+
+@media (min-width: 720px) {
+  .brand h1 {
+    font-size: 48px;
+  }
+}
+
+/* ── desktop: the map is capped and centred, never sprawled ─────────────────────────────────── */
+
+@media (min-width: 1000px) {
+  :root {
+    --max-col: 520px;
+  }
+}
+
+/* ── SHORT VIEWPORT — MUST BE LAST ──────────────────────────────────────────────────────────────
+ * An 812x375 landscape phone is 812px WIDE and therefore matches both queries above. Written here,
+ * last, it wins; written first, a phone on its side gets a layout taller than the screen. */
+
+@media (max-height: 640px) {
+  :root {
+    --rowgap: 6px;
+    --r-edicts: 52px;
+    --r-tray: 76px;
+    --r-note: 16px;
+  }
+  .brand h1 {
+    font-size: 30px;
+  }
+  .brand {
+    padding: 10px 0 2px;
+  }
+  .branch {
+    min-height: 50px;
+  }
+  .note {
+    font-size: 11px;
+  }
+}
+
+/* ── A PHONE ON ITS SIDE — MUST BE LAST OF ALL ───────────────────────────────────────────────────
+ * At 812x375 the single column needs about 680px of height and has 375. Stacked, everything below
+ * the board is off-screen and the map itself does not fit its slot — the round becomes literally
+ * unplayable, and it is invisible to any check run only in portrait. So below 500px tall the stage
+ * becomes two columns: the map on the left, sized off the HEIGHT, and every control beside it.
+ *
+ * Written after every other query because an 812x375 phone is 812px WIDE and therefore also matches
+ * the tablet and desktop rules above; whichever is written last wins the cascade. */
+
+@media (max-height: 500px) and (orientation: landscape) {
+  :root {
+    --max-col: 100vw;
+    --rowgap: 6px;
+  }
+  .stage {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    grid-template-rows: auto auto 1fr auto;
+    grid-template-areas:
+      'board top'
+      'board edicts'
+      'board tray'
+      'board actions';
+    column-gap: 10px;
+    align-content: start;
+    max-width: 100%;
+  }
+  .boardwrap {
+    grid-area: board;
+    align-items: start;
+  }
+  /* In landscape the height is the binding constraint, so the map is sized from it alone. */
+  .board {
+    --cell: max(16px, min(calc((100dvh - var(--pad) * 2 - 4px) / var(--n)), 46px));
+  }
+  .topbar {
+    grid-area: top;
+  }
+  .edictstrip {
+    grid-area: edicts;
+  }
+  .tray {
+    grid-area: tray;
+    align-items: center;
+  }
+  .actionbar {
+    grid-area: actions;
+  }
+  .note {
+    display: none;
+  }
+  .brand h1 {
+    font-size: 26px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 1ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 1ms !important;
+  }
+}
